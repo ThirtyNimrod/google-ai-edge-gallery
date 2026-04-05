@@ -1,0 +1,67 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Markdown QA - Upload</title>
+    <style>
+      body { font-family: Arial, sans-serif; padding: 16px; }
+      .file-item { margin: 8px 0; padding:8px; border:1px solid #ddd; }
+      button { margin-top: 8px; }
+    </style>
+  </head>
+  <body>
+    <h2>Upload Markdown files</h2>
+    <input id="fileInput" type="file" accept=".md,text/markdown" multiple />
+    <div id="files"></div>
+    <button id="clearBtn">Clear uploads</button>
+
+    <script>
+      const STORAGE_KEY = 'markdown_uploads_v1'
+
+      function readUploads() {
+        try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') } catch(e){ return [] }
+      }
+
+      function renderList(){
+        const container = document.getElementById('files')
+        const list = readUploads()
+        container.innerHTML = ''
+        if(list.length===0){ container.innerHTML = '<p>No uploaded files yet.</p>'; return }
+        list.forEach((f,i)=>{
+          const div = document.createElement('div')
+          div.className='file-item'
+          div.innerHTML = `<strong>${f.name}</strong> <br/><small>${(f.size/1024).toFixed(1)} KB • ${new Date(f.uploadedAt).toLocaleString()}</small><pre style="white-space:pre-wrap">${f.content.slice(0,800)}${f.content.length>800?'\n\n...':''}</pre>`
+          container.appendChild(div)
+        })
+      }
+
+      document.getElementById('fileInput').addEventListener('change', async (e)=>{
+        const files = Array.from(e.target.files || [])
+        if(files.length===0) return
+        const uploads = readUploads()
+        for(const file of files){
+          try{
+            const text = await file.text()
+            uploads.push({ id: cryptoRandomId(), name: file.name, size: file.size, uploadedAt: Date.now(), content: text })
+          } catch(err){ console.error('read error', err) }
+        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(uploads))
+        renderList()
+        alert('Uploaded ' + files.length + ' file(s). You can now close this screen and ask the agent about them.')
+        e.target.value = ''
+      })
+
+      document.getElementById('clearBtn').addEventListener('click', ()=>{
+        if(confirm('Clear all uploaded markdown files?')){
+          localStorage.removeItem(STORAGE_KEY)
+          renderList()
+        }
+      })
+
+      function cryptoRandomId(){ return Math.random().toString(36).slice(2,9) }
+
+      renderList()
+    </script>
+  </body>
+</html>

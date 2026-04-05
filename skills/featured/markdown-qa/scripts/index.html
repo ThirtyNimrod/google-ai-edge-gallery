@@ -1,0 +1,70 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Markdown QA Runner</title>
+    <script>
+      // Headless runner. Host will call ai_edge_gallery_get_result(data, secret)
+      window.ai_edge_gallery_get_result = async function(data, secret) {
+        try {
+          const payload = (data && data !== '{}') ? JSON.parse(data) : {}
+          const STORAGE_KEY = 'markdown_uploads_v1'
+
+          // Read uploads from localStorage.
+          let uploads = []
+          try { uploads = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') } catch(e) { uploads = [] }
+
+          if (!uploads || uploads.length === 0) {
+            // Prompt user to upload files via visible webview.
+            return JSON.stringify({ webview: { url: 'webview.html' }, result: 'No uploaded Markdown files found. Open the upload screen to add files.' })
+          }
+
+          const question = (payload.question || payload.q || payload.query || '').trim()
+          if (!question) {
+            return JSON.stringify({ result: 'Please provide a question in the data parameter, e.g. {"question":"Summarize the uploaded file."}' })
+          }
+
+          // Simple relevance: find the file and snippet with highest keyword overlap.
+          const qwords = question.toLowerCase().split(/\W+/).filter(Boolean)
+          function scoreText(text){
+            const tokens = text.toLowerCase().split(/\W+/).filter(Boolean)
+            let c=0; const set = new Set(tokens)
+            for(const w of qwords) if(set.has(w)) c++
+            return c
+          }
+
+          let best = {score:0, file:null, snippet:''}
+          for(const f of uploads){
+            // Split by header or paragraphs
+            const parts = f.content.split(/(^#+ .*$)/m).filter(Boolean)
+            // Also include 500-char sliding windows
+            const sliding = []
+            for(let i=0;i<f.content.length;i+=500){ sliding.push(f.content.slice(i,i+500)) }
+            const candidates = parts.concat(sliding)
+            for(const part of candidates){
+              const s = scoreText(part)
+              if(s>best.score){ best = {score:s, file:f, snippet:part} }
+            }
+          }
+
+          if(best.score===0){
+            // fallback: return filenames and short instructions
+            const names = uploads.map(u=>u.name).join(', ')
+            return JSON.stringify({ result: `No strong match for your question. Uploaded files: ${names}. Try asking about file names or topics.` })
+          }
+
+          // Compose answer: return snippet + provenance
+          const snippet = best.snippet.trim().slice(0,2000)
+          const answer = `Found relevant content in file "${best.file.name}". Snippet:\n\n${snippet}\n\n(End of snippet)`
+          return JSON.stringify({ result: answer, provenance: [{ file: best.file.name }] })
+        } catch (e) {
+          return JSON.stringify({ error: 'Runner error: ' + e.message })
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <p>This page is intended to be run headless by the Gallery app.</p>
+  </body>
+</html>
